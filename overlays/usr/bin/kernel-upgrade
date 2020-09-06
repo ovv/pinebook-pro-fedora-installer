@@ -4,6 +4,8 @@
 #       Version 1.0
 # *****************************
 
+set -e
+
 # Set globals
 TMPDIR=/var/tmp/kernel-upgrade
 ARCH='aarch64'
@@ -14,8 +16,8 @@ NSPAWN='systemd-nspawn -q --resolv-conf=copy-host --timezone=off -D'
 export DIALOGRC="./dialogrc_gui"
 
 # clearing variables
-DEVICE="Pinebook Pro"
-EDITION="Fedora Workstation"
+#DEVICE="Pinebook Pro"
+#EDITION="Fedora Workstation"
 
 # check if root
 if [ "$EUID" -ne 0 ]; then
@@ -28,9 +30,9 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Sanity checks for dependencies
-declare -a DEPENDNECIES=("sed" "rsync" "git" "parted" "systemd-nspawn" "wget" "dialog" "bsdtar" "openssl" "awk" "mkfs.vfat")
+declare -a DEPENDENCIES=("sed" "rsync" "git" "parted" "systemd-nspawn" "wget" "dialog" "bsdtar" "openssl" "awk" "mkfs.vfat")
 
-for i in "${DEPENDNECIES[@]}"; do
+for i in "${DEPENDENCIES[@]}"; do
   if ! [[ -f "/bin/$i" || -f "/sbin/$i" || -f "/usr/bin/$i" || -f "/usr/sbin/$i" ]] ; then
     echo "$i command is missing! Please install the relevant package."
     exit 1
@@ -51,15 +53,16 @@ msg() {
     BOLD="\e[1;1m"
     GREEN="${BOLD}\e[1;32m"
       local mesg=$1; shift
-      printf "${GREEN}==>${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
- }
+#      printf "${GREEN}==>${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+      printf "%s==>%s%s %s%s\n" "$GREEN" "$ALL_OFF" "$BOLD" "$mesg" "$ALL_OFF" "$@" >&2
+}
 
 info() {
     ALL_OFF="\e[1;0m"
     BOLD="\e[1;1m"
     BLUE="${BOLD}\e[1;34m"
-      local mesg=$1; shift
-      printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+#      printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+      printf "%s  ->%s%s %s%s\n" "$BLUE" "$ALL_OFF" "$BOLD" "$mesg" "$ALL_OFF" "$@" >&2
  }
 
 usage_build_installer() {
@@ -67,20 +70,20 @@ usage_build_installer() {
     echo '    -h                 This help'
     echo ''
     echo ''
-    exit $1
+    exit "$1"
 }
 
 get_timer(){
-    echo $(date +%s)
+    date +%s
 }
 
 # $1: start timer
 elapsed_time(){
-    echo $(echo $1 $(get_timer) | awk '{ printf "%0.2f",($2-$1)/60 }')
+    echo "$1" "$(get_timer)" | awk '{ printf "%0.2f",($2-$1)/60 }'
 }
 
 show_elapsed_time(){
-    msg "Time %s: %s minutes..." "$1" "$(elapsed_time $2)"
+    msg "Time %s: %s minutes..." "$1" "$(elapsed_time "$2")"
 }
 
 prepare_media() {
@@ -130,5 +133,5 @@ manjaro_install() {
 timer_start=$(get_timer)
 prepare_media
 manjaro_install
-show_elapsed_time "${FUNCNAME}" "${timer_start}"
+show_elapsed_time "${FUNCNAME[0]}" "${timer_start}"
 sync

@@ -4,8 +4,11 @@
 #       Version 2.0
 # *****************************
 
-# Change download url and raw filename to your liking
-FEDORAURL="https://fedora.uib.no/fedora/linux/releases/32/Workstation/aarch64/images/Fedora-Workstation-32-1.6.aarch64.raw.xz"
+# Abort script on error
+set -e
+
+# Use FEDORAURL from the environment if available
+FEDORAURL=${FEDORAURL:-'https://fedora.uib.no/fedora/linux/releases/32/Workstation/aarch64/images/Fedora-Workstation-32-1.6.aarch64.raw.xz'}
 FEDORARAW="Fedora-Workstation-32-1.6.aarch64.raw"
 
 # Set globals
@@ -46,9 +49,9 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Sanity checks for dependencies
-declare -a DEPENDNECIES=("sed" "rsync" "git" "parted" "systemd-nspawn" "wget" "dialog" "bsdtar" "openssl" "awk" "mkfs.vfat")
+declare -a DEPENDENCIES=("sed" "rsync" "git" "parted" "systemd-nspawn" "wget" "dialog" "bsdtar" "openssl" "awk" "mkfs.vfat")
 
-for i in "${DEPENDNECIES[@]}"; do
+for i in "${DEPENDENCIES[@]}"; do
   if ! [[ -f "/bin/$i" || -f "/sbin/$i" || -f "/usr/bin/$i" || -f "/usr/sbin/$i" ]] ; then
     echo "$i command is missing! Please install the relevant package."
     exit 1
@@ -69,7 +72,8 @@ msg() {
     BOLD="\e[1;1m"
     GREEN="${BOLD}\e[1;32m"
       local mesg=$1; shift
-      printf "${GREEN}==>${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+#      printf "${GREEN}==>${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+      printf "%s==>%s%s %s%s\n" "$GREEN" "$ALL_OFF" "$BOLD" "$mesg" "$ALL_OFF" "$@" >&2
  }
 
 info() {
@@ -77,7 +81,8 @@ info() {
     BOLD="\e[1;1m"
     BLUE="${BOLD}\e[1;34m"
       local mesg=$1; shift
-      printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+#      printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+      printf "%s  ->%s%s %s%s\n" "$BLUE" "$ALL_OFF" "$BOLD" "$mesg" "$ALL_OFF" "$@" >&2
  }
 
 usage_build_installer() {
@@ -85,20 +90,20 @@ usage_build_installer() {
     echo '    -h                 This help'
     echo ''
     echo ''
-    exit $1
+    exit "$1"
 }
 
 get_timer(){
-    echo $(date +%s)
+    date +%s
 }
 
 # $1: start timer
 elapsed_time(){
-    echo $(echo $1 $(get_timer) | awk '{ printf "%0.2f",($2-$1)/60 }')
+    echo "$1" "$(get_timer)" | awk '{ printf "%0.2f",($2-$1)/60 }'
 }
 
 show_elapsed_time(){
-    msg "Time %s: %s minutes..." "$1" "$(elapsed_time $2)"
+    msg "Time %s: %s minutes..." "$1" "$(elapsed_time "$2")"
 }
 
 getarmprofiles () {
@@ -115,18 +120,18 @@ prepare_media() {
     # fetch and extract rootfs
     info "Downloading latest $ARCH rootfs..."
     cd $TMPDIR
-    rm -rf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz 1> /dev/null 2>&1
+    # rm -rf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz 1> /dev/null 2>&1
     wget -q --show-progress --progress=bar:force:noscroll https://osdn.net/projects/manjaro-arm/storage/.rootfs/Manjaro-ARM-$ARCH-latest.tar.gz
 
     if [ ! -f "$FEDORARAW" ]; then
     info "Downloading Fedora Image..."
-      wget -q --show-progress --progress=bar:force:noscroll $FEDORAURL
+      wget -q --show-progress --progress=bar:force:noscroll "$FEDORAURL"
     fi
 
     info "Extracting $ARCH rootfs..."
     mkdir -p $TMPDIR/manjaro 1> /dev/null 2>&1
     bsdtar -xpf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz -C $TMPDIR/manjaro
-    rm -rf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz 1> /dev/null 2>&1
+    # rm -rf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz 1> /dev/null 2>&1
     
     if [ ! -f "$FEDORARAW" ]; then
       info "Decompress Fedora Image..."
@@ -140,9 +145,12 @@ manjaro_install() {
     info "Setting up keyrings..."
     $NSPAWN $TMPDIR/manjaro pacman-key --init 1> /dev/null 2>&1
     $NSPAWN $TMPDIR/manjaro pacman-key --populate archlinux archlinuxarm manjaro manjaro-arm 1> /dev/null 2>&1
-    
+
+    info "Checking connectivity"
+    $NSPAWN $TMPDIR/manjaro ping -c 2 -W 2
+
     info "Generating mirrorlist..."
-    $NSPAWN $TMPDIR/manjaro pacman-mirrors -f10 1> /dev/null 2>&1
+    $NSPAWN $TMPDIR/manjaro pacman-mirrors -f10
     
     info "Installing packages..."
     # Install device and editions specific packages
@@ -186,7 +194,7 @@ install_fedora() {
     rmdir $TMPDIR/imgfs/3
     rmdir $TMPDIR/imgfs
 
-    rm -rf $TMPDIR/$FEDORARAW*
+    # rm -rf $TMPDIR/$FEDORARAW*
 }
 
 upgrade_fedora() {
@@ -238,11 +246,14 @@ configure_fedora() {
     
     info "Set keymap..."
     echo "KEYMAP=$CLIKEYMAP" | tee --append $TMPDIR/root/etc/vconsole.conf 1> /dev/null 2>&1
-    echo 'Section "InputClass"' > $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
-    echo 'Identifier "system-keyboard"' >> $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
-    echo 'Option "XkbLayout" "us"' >> $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
-    echo 'EndSection' >> $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
-    sed -i s/"us"/"$X11KEYMAP"/ $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
+
+    {
+      echo 'Section "InputClass"'
+      echo 'Identifier "system-keyboard"'
+      echo 'Option "XkbLayout" "us"'
+      echo 'EndSection'
+    } > $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
+    sed -i "s/us/$X11KEYMAP"/ $TMPDIR/root/etc/X11/xorg.conf.d/00-keyboard.conf
 
     info "Set hostname..."
     echo "$HOSTNAME" > $TMPDIR/root/etc/hostname
@@ -253,7 +264,7 @@ configure_fedora() {
     # Correcting permissions from overlay
     
     info "Enable suspend2idle..."
-    sed -i s/"#SuspendState=mem standby freeze"/"SuspendState=freeze"/g $TMPDIR/root/etc/systemd/sleep.conf
+    sed -i "s/#SuspendState=mem standby freeze/SuspendState=freeze/g" $TMPDIR/root/etc/systemd/sleep.conf
 
     info "Fix update-uboot for pinebook-pro-rk3399"
     ln -s ../socs.d/Rockchips-ARMv8 $TMPDIR/root/usr/share/arm-image-installer/boards.d/pinebook-pro-rk3399
@@ -265,12 +276,12 @@ configure_fedora() {
     echo "$ROOTPASSWORD" > $TMPDIR/rootpassword
 
     info "Setting password for root ..."
-    $NSPAWN $TMPDIR/root awk -i inplace -F: "BEGIN {OFS=FS;} \$1 == \"root\" {\$2=\"$(openssl passwd -1 $(cat $TMPDIR/rootpassword))\"} 1" /etc/shadow 1> /dev/null 2>&1
+    $NSPAWN $TMPDIR/root awk -i inplace -F: "BEGIN {OFS=FS;} \$1 == \"root\" {\$2=\"$(openssl passwd -1 "$(cat $TMPDIR/rootpassword)")\"} 1" /etc/shadow 1> /dev/null 2>&1
 
     info "Adding user..."
-    $NSPAWN $TMPDIR/root useradd -m -G wheel -p $(openssl passwd -1 $(cat $TMPDIR/password)) -s /bin/bash $(cat $TMPDIR/user) 1> /dev/null 2>&1
-    $NSPAWN $TMPDIR/root usermod -aG $USERGROUPS $(cat $TMPDIR/user) 1> /dev/null 2>&1
-    $NSPAWN $TMPDIR/root chfn -f "$FULLNAME" $(cat $TMPDIR/user) 1> /dev/null 2>&1
+    $NSPAWN $TMPDIR/root useradd -m -G wheel -p "$(openssl passwd -1 "$(cat $TMPDIR/password)")" -s /bin/bash "$(cat $TMPDIR/user)" 1> /dev/null 2>&1
+    $NSPAWN $TMPDIR/root usermod -aG "$USERGROUPS" "$(cat $TMPDIR/user)" 1> /dev/null 2>&1
+    $NSPAWN $TMPDIR/root chfn -f "$FULLNAME" "$(cat ""$TMPDIR/user)" 1> /dev/null 2>&1
 	
     # Remove temp files on host
     rm -rf $TMPDIR/user $TMPDIR/password $TMPDIR/rootpassword
@@ -280,30 +291,30 @@ configure_fedora() {
 
 build_from_template () {
 	sed \
-		-e "s/\${DEV_NAME}/`basename ${DEV_NAME}`/g" \
-		< $1.template > $1
+		-e "s/\${DEV_NAME}/$(basename "${DEV_NAME}")/g" \
+		< "$1".template > "$1"
 }
 
 prepare_card () {
     msg "Getting $SDCARD ready for $DEVICE..."
         # umount SD card
-        umount ${SDCARD}${SDDEV}1 1> /dev/null 2>&1
-        umount ${SDCARD}${SDDEV}2 1> /dev/null 2>&1
-        umount ${SDCARD}${SDDEV}3 1> /dev/null 2>&1
-        umount ${SDCARD}${SDDEV}4 1> /dev/null 2>&1
-        umount ${SDCARD}${SDDEV}5 1> /dev/null 2>&1
-        umount ${SDCARD}${SDDEV}6 1> /dev/null 2>&1
+        umount "${SDCARD}${SDDEV}1" 1> /dev/null 2>&1 || true
+        umount "${SDCARD}${SDDEV}2" 1> /dev/null 2>&1 || true
+        umount "${SDCARD}${SDDEV}3" 1> /dev/null 2>&1 || true
+        umount "${SDCARD}${SDDEV}4" 1> /dev/null 2>&1 || true
+        umount "${SDCARD}${SDDEV}5" 1> /dev/null 2>&1 || true
+        umount "${SDCARD}${SDDEV}6" 1> /dev/null 2>&1 || true
 
     info "Create partitions..."
         #Clear first 32mb
-        dd if=/dev/zero of=${SDCARD} bs=1M count=32 1> /dev/null 2>&1
+        dd if=/dev/zero of="${SDCARD}" bs=1M count=32 1> /dev/null 2>&1
 
     info "Partition $DEV_NAME"
 
 	build_from_template gpt.sfdisk
-        sfdisk ${SDCARD} < gpt.sfdisk 1> /dev/null 2>&1
+        sfdisk "${SDCARD}" < gpt.sfdisk 1> /dev/null 2>&1
 
-        partprobe -s $SDCARD
+        partprobe -s "$SDCARD"
 
     info "Format partitions on $DEV_NAME"
         mkfs.vfat -F 32 "${SDCARD}${SDDEV}1" -n EFI 1> /dev/null 2>&1
@@ -311,31 +322,31 @@ prepare_card () {
         mkfs.ext4 -F -O ^metadata_csum,^64bit "${SDCARD}${SDDEV}3" -L "${DEV_NAME}-ROOT" 1> /dev/null 2>&1
 
         mkdir -p $TMPDIR/root
-        mount ${SDCARD}${SDDEV}3 $TMPDIR/root
+        mount "${SDCARD}${SDDEV}3" $TMPDIR/root
         sleep 1
         mkdir -p $TMPDIR/root/boot
-        mount ${SDCARD}${SDDEV}2 $TMPDIR/root/boot
+        mount "${SDCARD}${SDDEV}2" $TMPDIR/root/boot
         sleep 1
         mkdir -p $TMPDIR/root/boot/efi
-        mount ${SDCARD}${SDDEV}1 $TMPDIR/root/boot/efi
+        mount "${SDCARD}${SDDEV}1" $TMPDIR/root/boot/efi
 
 }
 
 cleanup () {
     msg "Writing bootloader and cleaning up after install..."
     # Flash bootloader
-    dd if=$TMPDIR/root/boot/idbloader.img of=${SDCARD} seek=64 conv=notrunc,fsync 1> /dev/null 2>&1
-    dd if=$TMPDIR/root/boot/u-boot.itb of=${SDCARD} seek=16384 conv=notrunc,fsync 1> /dev/null 2>&1
+    dd if=$TMPDIR/root/boot/idbloader.img of="${SDCARD}" seek=64 conv=notrunc,fsync 1> /dev/null 2>&1
+    dd if=$TMPDIR/root/boot/u-boot.itb of="${SDCARD}" seek=16384 conv=notrunc,fsync 1> /dev/null 2>&1
     	
     #clean up
         umount $TMPDIR/root/boot/efi
         umount $TMPDIR/root/boot
         umount $TMPDIR/root
-	partprobe $SDCARD 1> /dev/null 2>&1
-	rm -rf $TMPDIR
+	partprobe "$SDCARD" 1> /dev/null 2>&1
+	# rm -rf $TMPDIR
 }
 
-if [ ! -z "$EDITION" ]; then
+if [ -n "$EDITION" ]; then
 	USER=$(dialog --clear --title "Fedora ARM Installer" \
 	--inputbox "Enter the username you want:
 (usernames most be all lowercase)" 8 50 \
@@ -350,7 +361,7 @@ else
 	exit 1
 fi
 
-if [ ! -z "$USER" ]
+if [ -n "$USER" ]
 then
 FULLNAME=$(dialog --clear --title "Fedora ARM Installer" \
     --inputbox "Enter desired Full Name for $USER:" 8 50 \
@@ -361,7 +372,7 @@ else
     exit 1
 fi
 
-if [ ! -z "$FULLNAME" ]; then
+if [ -n "$FULLNAME" ]; then
 	PASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Enter new Password for $USER:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
@@ -371,7 +382,7 @@ else
 	exit 1
 fi
 
-if [ ! -z "$PASSWORD" ]; then
+if [ -n "$PASSWORD" ]; then
 	CONFIRMPASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Confirm new Password for $USER:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
@@ -387,7 +398,7 @@ if [[ "$PASSWORD" != "$CONFIRMPASSWORD" ]]; then
 	exit 1
 fi
 
-if [ ! -z "$CONFIRMPASSWORD" ]; then
+if [ -n "$CONFIRMPASSWORD" ]; then
 	ROOTPASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Enter new Root Password:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
@@ -397,7 +408,7 @@ else
 	exit 1
 fi
 
-if [ ! -z "$ROOTPASSWORD" ]; then
+if [ -n "$ROOTPASSWORD" ]; then
 	CONFIRMROOTPASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Confirm new Root Password:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
@@ -406,22 +417,20 @@ else
 	clear
 	exit 1
 fi
-
 if [[ "$ROOTPASSWORD" != "$CONFIRMROOTPASSWORD" ]]; then
 	clear
 	msg "Root passwords do not match! Please restart the installer and try again."
 	exit 1
 fi
 
-if [ ! -z "$CONFIRMROOTPASSWORD" ]
+if [ -n "$CONFIRMROOTPASSWORD" ]
 then
-
-# simple command to put the results of lsblk (just the names of the devices) into an array and make that array populate the options	
-	let i=0
+# simple command to put the results of lsblk (just the names of the devices) into an array and make that array populate the options
+	i=0
 	W=()
 	while read -r line; do
-		let i=$i+1
-		W+=($line "")
+		(( i=i+1 ))
+		W+=("$line" "")
 	done < <( lsblk -dn -o NAME )
 	SDCARD=$(dialog --title "Fedora ARM Installer" \
 	--menu "Choose your SDCard/eMMC/USB - Be sure the correct drive is selected! 
@@ -447,12 +456,12 @@ else
 fi
 
 
-if [ ! -z "$SDCARD" ]; then
-	let i=0
+if [ -n "$SDCARD" ]; then
+	i=0
 	W=()
 	while read -r line; do
-		let i=$i+1
-		W+=($line "")
+		(( i=i+1 ))
+		W+=("$line" "")
 	done < <( timedatectl list-timezones )
 	TIMEZONE=$(dialog --clear --title "Fedora ARM Installer" \
 	--menu "Choose your timezone!" 20 50 15 \
@@ -464,12 +473,12 @@ else
 fi
 
 
-if [ ! -z "$TIMEZONE" ]; then
-	let i=0
+if [ -n "$TIMEZONE" ]; then
+	i=0
 	W=()
 	while read -r line; do
-		let i=$i+1
-		W+=($line "")
+		(( i=i+1 ))
+		W+=("$line" "")
 	done < <( localectl list-locales )
 	LOCALE=$(dialog --clear --title "Fedora ARM Installer" \
 		--menu "Choose your locale!" 20 50 15 \
@@ -480,12 +489,12 @@ else
 	exit 1
 fi
 
-if [ ! -z "$LOCALE" ]; then
-	let i=0
+if [ -n "$LOCALE" ]; then
+	i=0
 	W=()
 	while read -r line; do
-		let i=$i+1
-		W+=($line "")
+		(( i=i+1 ))
+		W+=("$line" "")
 	done < <( localectl list-keymaps )
 	CLIKEYMAP=$(dialog --clear --title "Fedora ARM Installer" \
 		--menu "Choose your TTY keyboard layout:" 20 50 15 \
@@ -496,12 +505,12 @@ else
 	exit 1
 fi
 
-if [ ! -z "$CLIKEYMAP" ]; then
-	let i=0
+if [ -n "$CLIKEYMAP" ]; then
+	i=0
 	W=()
 	while read -r line; do
-		let i=$i+1
-		W+=($line "")
+		(( i=i+1 ))
+		W+=("$line" "")
 	done < <( localectl list-x11-keymap-layouts )
 	X11KEYMAP=$(dialog --clear --title "Manjaro ARM Installer" \
 		--menu "Choose your X11 keyboard layout:" 20 50 15 \
@@ -512,7 +521,7 @@ else
 	exit 1
 fi
 
-if [ ! -z "$CLIKEYMAP" ]; then
+if [ -n "$CLIKEYMAP" ]; then
 	HOSTNAME=$(dialog --clear --title "Fedora ARM Installer" \
 	--inputbox "Enter desired hostname (fqdn) for this system:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
@@ -522,7 +531,7 @@ else
 	exit 1
 fi
 
-if [ ! -z "$HOSTNAME" ]; then
+if [ -n "$HOSTNAME" ]; then
 	dialog --clear --title "Fedora ARM Installer" \
     --yesno "Is the below information correct:
     Device = $DEVICE
@@ -562,5 +571,5 @@ install_fedora
 upgrade_fedora
 configure_fedora
 cleanup
-show_elapsed_time "${FUNCNAME}" "${timer_start}"
+show_elapsed_time "${FUNCNAME[0]}" "${timer_start}"
 sync
