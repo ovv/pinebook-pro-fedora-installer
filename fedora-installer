@@ -7,15 +7,19 @@
 # Abort script on error
 set -e
 
-# Use FEDORAURL from the environment if available
-FEDORAURL=${FEDORAURL:-'https://fedora.uib.no/fedora/linux/releases/32/Workstation/aarch64/images/Fedora-Workstation-32-1.6.aarch64.raw.xz'}
-FEDORARAW="Fedora-Workstation-32-1.6.aarch64.raw"
-
 # Set globals
 TMPDIR=/var/tmp/fedora-installer
 ARCH='aarch64'
 CARCH=$(uname -m)
 NSPAWN='systemd-nspawn -q --resolv-conf=copy-host --timezone=off -D'
+
+# Use FEDORAURL from the environment if available
+FEDORAURL=${FEDORAURL:-'https://fedora.uib.no/fedora/linux/releases/32/Workstation/aarch64/images/Fedora-Workstation-32-1.6.aarch64.raw.xz'}
+FEDORANAME="Fedora.aarch64.raw.xz"
+FEDORARAW="Fedora.aarch64.raw"
+
+MANJAROURL=${MANJAROURL:-"https://osdn.net/projects/manjaro-arm/storage/.rootfs/Manjaro-ARM-$ARCH-latest.tar.gz"}
+MANJARONAME="Manjaro-ARM-$ARCH-latest.tar.gz"
 
 # set colorscheme
 export DIALOGRC="./dialogrc_gui"
@@ -65,24 +69,20 @@ if ! [[ -f "/usr/lib/binfmt.d/qemu-aarch64-static.conf" || -f "/usr/lib/binfmt.d
 fi
 fi
 
+COLOR_RESET=$'\e[1;0m'
+COLOR_BLACK_BOLD=$'\e[1;1m'
+COLOR_GREEN_BOLD=$'\e[32;1m'
+COLOR_BLUE_BOLD=$'\e[34;1m'
 
 # Functions
 msg() {
-    ALL_OFF="\e[1;0m"
-    BOLD="\e[1;1m"
-    GREEN="${BOLD}\e[1;32m"
-      local mesg=$1; shift
-#      printf "${GREEN}==>${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
-      printf "%s==>%s%s %s%s\n" "$GREEN" "$ALL_OFF" "$BOLD" "$mesg" "$ALL_OFF" "$@" >&2
+    local mesg=$1; shift
+    printf "%s==>%s%s %s%s\n" "$COLOR_GREEN_BOLD" "$COLOR_RESET" "$COLOR_BLACK_BOLD" "$mesg" "$COLOR_RESET" "$@" >&2
  }
 
 info() {
-    ALL_OFF="\e[1;0m"
-    BOLD="\e[1;1m"
-    BLUE="${BOLD}\e[1;34m"
-      local mesg=$1; shift
-#      printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
-      printf "%s  ->%s%s %s%s\n" "$BLUE" "$ALL_OFF" "$BOLD" "$mesg" "$ALL_OFF" "$@" >&2
+    local mesg=$1; shift
+    printf "%s  ->%s%s %s%s\n" "$COLOR_BLUE_BOLD" "$COLOR_RESET" "$COLOR_BLACK_BOLD" "$mesg" "$COLOR_RESET" "$@" >&2
  }
 
 usage_build_installer() {
@@ -118,24 +118,27 @@ prepare_media() {
     msg "Prepare source media..."
     
     # fetch and extract rootfs
-    info "Downloading latest $ARCH rootfs..."
     cd $TMPDIR
-    # rm -rf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz 1> /dev/null 2>&1
-    wget -q --show-progress --progress=bar:force:noscroll https://osdn.net/projects/manjaro-arm/storage/.rootfs/Manjaro-ARM-$ARCH-latest.tar.gz
 
-    if [ ! -f "$FEDORARAW" ]; then
-    info "Downloading Fedora Image..."
-      wget -q --show-progress --progress=bar:force:noscroll "$FEDORAURL"
+    if [ ! -f $MANJARONAME ]; then
+      info "Downloading latest $ARCH rootfs..."
+      wget -q --show-progress --progress=bar:force:noscroll -O "$MANJARONAME" "$MANJAROURL"
+      sha256sum $MANJARONAME
+    fi
+
+    if [ ! -f "$FEDORANAME" ]; then
+      info "Downloading Fedora Image..."
+      wget -q --show-progress --progress=bar:force:noscroll -O "$FEDORANAME" "$FEDORAURL"
+      sha256sum $FEDORANAME
     fi
 
     info "Extracting $ARCH rootfs..."
     mkdir -p $TMPDIR/manjaro 1> /dev/null 2>&1
-    bsdtar -xpf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz -C $TMPDIR/manjaro
-    # rm -rf $TMPDIR/Manjaro-ARM-$ARCH-latest.tar.gz 1> /dev/null 2>&1
-    
+    bsdtar -xpf $TMPDIR/$MANJARONAME -C $TMPDIR/manjaro
+
     if [ ! -f "$FEDORARAW" ]; then
       info "Decompress Fedora Image..."
-	  xz --decompress $TMPDIR/$FEDORARAW.xz
+	    xz --decompress $TMPDIR/$FEDORANAME
     fi
 }
 
