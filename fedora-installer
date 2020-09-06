@@ -7,6 +7,28 @@
 # Abort script on error
 set -e
 
+# *****************************
+#       CONFIGURATION
+# *****************************
+
+DEVICE="Pinebook Pro"
+EDITION="Fedora Workstation"
+USER="ovv"
+USERGROUPS=""
+FULLNAME="ovv"
+PASSWORD="password"
+CONFIRMPASSWORD="password"
+CONFIRMROOTPASSWORD="password"
+ROOTPASSWORD="password"
+CLIKEYMAP="fr"
+X11KEYMAP="fr"
+SDCARD="mmcblk0"
+TIMEZONE="Europe/Brussels"
+LOCALE="en_GB.UTF8"
+HOSTNAME="pinebook"
+
+# ****************************
+
 # Set globals
 TMPDIR=/var/tmp/fedora-installer
 ARCH='aarch64'
@@ -15,8 +37,8 @@ NSPAWN='systemd-nspawn -q --resolv-conf=copy-host --timezone=off -D'
 
 # Use FEDORAURL from the environment if available
 FEDORAURL=${FEDORAURL:-'https://fedora.uib.no/fedora/linux/releases/32/Workstation/aarch64/images/Fedora-Workstation-32-1.6.aarch64.raw.xz'}
-FEDORANAME="Fedora.aarch64.raw.xz"
 FEDORARAW="Fedora.aarch64.raw"
+FEDORANAME="$FEDORARAW.xz"
 
 MANJAROURL=${MANJAROURL:-"https://osdn.net/projects/manjaro-arm/storage/.rootfs/Manjaro-ARM-$ARCH-latest.tar.gz"}
 MANJARONAME="Manjaro-ARM-$ARCH-latest.tar.gz"
@@ -24,23 +46,10 @@ MANJARONAME="Manjaro-ARM-$ARCH-latest.tar.gz"
 # set colorscheme
 export DIALOGRC="./dialogrc_gui"
 
-# clearing variables
-DEVICE="Pinebook Pro"
-EDITION="Fedora Workstation"
-USER=""
-USERGROUPS=""
-FULLNAME=""
-PASSWORD=""
-CONFIRMPASSWORD=""
-CONFIRMROOTPASSWORD=""
-ROOTPASSWORD=""
-SDCARD=""
-SDTYP=""
+# local variables
+SDTYPE=""
 SDDEV=""
 DEV_NAME=""
-TIMEZONE=""
-LOCALE=""
-HOSTNAME=""
 
 # check if root
 if [ "$EUID" -ne 0 ]; then
@@ -126,20 +135,21 @@ prepare_media() {
       sha256sum $MANJARONAME
     fi
 
-    if [ ! -f "$FEDORANAME" ]; then
-      info "Downloading Fedora Image..."
-      wget -q --show-progress --progress=bar:force:noscroll -O "$FEDORANAME" "$FEDORAURL"
-      sha256sum $FEDORANAME
-    fi
-
     info "Extracting $ARCH rootfs..."
     mkdir -p $TMPDIR/manjaro 1> /dev/null 2>&1
     bsdtar -xpf $TMPDIR/$MANJARONAME -C $TMPDIR/manjaro
 
     if [ ! -f "$FEDORARAW" ]; then
+      if [ ! -f "$FEDORANAME" ]; then
+        info "Downloading Fedora Image..."
+        wget -q --show-progress --progress=bar:force:noscroll -O "$FEDORANAME" "$FEDORAURL"
+        sha256sum $FEDORANAME
+      fi
+
       info "Decompress Fedora Image..."
 	    xz --decompress $TMPDIR/$FEDORANAME
     fi
+
 }
 
 manjaro_install() {
@@ -150,7 +160,8 @@ manjaro_install() {
     $NSPAWN $TMPDIR/manjaro pacman-key --populate archlinux archlinuxarm manjaro manjaro-arm 1> /dev/null 2>&1
 
     info "Checking connectivity"
-    $NSPAWN $TMPDIR/manjaro ping -c 2 -W 2
+    $NSPAWN $TMPDIR/manjaro curl example.com 1> /dev/null 2>&1
+    $NSPAWN $TMPDIR/manjaro bash
 
     info "Generating mirrorlist..."
     $NSPAWN $TMPDIR/manjaro pacman-mirrors -f10
@@ -349,117 +360,100 @@ cleanup () {
 	# rm -rf $TMPDIR
 }
 
-if [ -n "$EDITION" ]; then
+if [ ! -n "$USER" ]; then
 	USER=$(dialog --clear --title "Fedora ARM Installer" \
 	--inputbox "Enter the username you want:
 (usernames most be all lowercase)" 8 50 \
 	3>&1 1>&2 2>&3 3>&-)
     if [[ "$USER" =~ [A-Z] ]] || [[ "$USER" == *['!'@#\$%^\&*()_+]* ]]; then
-    clear
+
     msg "Configuration aborted! Username contained invalid characters."
     exit 1
     fi
 else 
-	clear
-	exit 1
+  msg "Using user: $USER"
 fi
 
-if [ -n "$USER" ]
+if [ ! -n "$USER" ]
 then
 FULLNAME=$(dialog --clear --title "Fedora ARM Installer" \
     --inputbox "Enter desired Full Name for $USER:" 8 50 \
         3>&1 1>&2 2>&3 3>&- \
 	)
 else
-    clear
-    exit 1
+  msg "Using fullname: $FULLNAME"
 fi
 
-if [ -n "$FULLNAME" ]; then
+if [ ! -n "$FULLNAME" ]; then
 	PASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Enter new Password for $USER:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
 	)
 else 
-	clear
-	exit 1
+  msg "Using predefined password"
 fi
 
-if [ -n "$PASSWORD" ]; then
+if [ ! -n "$PASSWORD" ]; then
 	CONFIRMPASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Confirm new Password for $USER:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
 	)
-else 
-	clear
-	exit 1
 fi
 
 if [[ "$PASSWORD" != "$CONFIRMPASSWORD" ]]; then
-	clear
 	msg "User passwords do not match! Please restart the installer and try again."
 	exit 1
 fi
 
-if [ -n "$CONFIRMPASSWORD" ]; then
+if [ ! -n "$CONFIRMPASSWORD" ]; then
 	ROOTPASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Enter new Root Password:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
 	)
 else 
-	clear
-	exit 1
+  msg "Using predefined root password"
 fi
 
-if [ -n "$ROOTPASSWORD" ]; then
+if [ ! -n "$ROOTPASSWORD" ]; then
 	CONFIRMROOTPASSWORD=$(dialog --clear --title "Fedora ARM Installer" \
 	--insecure --passwordbox "Confirm new Root Password:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
 	)
-else 
-	clear
-	exit 1
 fi
+
 if [[ "$ROOTPASSWORD" != "$CONFIRMROOTPASSWORD" ]]; then
-	clear
 	msg "Root passwords do not match! Please restart the installer and try again."
 	exit 1
 fi
 
-if [ -n "$CONFIRMROOTPASSWORD" ]
-then
-# simple command to put the results of lsblk (just the names of the devices) into an array and make that array populate the options
-	i=0
-	W=()
-	while read -r line; do
-		(( i=i+1 ))
-		W+=("$line" "")
-	done < <( lsblk -dn -o NAME )
-	SDCARD=$(dialog --title "Fedora ARM Installer" \
-	--menu "Choose your SDCard/eMMC/USB - Be sure the correct drive is selected! 
-WARNING! This WILL destroy the data on it!" 20 50 10 \
-	"${W[@]}" 3>&2 2>&1 1>&3)
+if [ ! -n "$SDCARD" ]; then
+  # simple command to put the results of lsblk (just the names of the devices) into an array and make that array populate the options
+  i=0
+  W=()
+  while read -r line; do
+    (( i=i+1 ))
+    W+=("$line" "")
+  done < <( lsblk -dn -o NAME )
+  SDCARD=$(dialog --title "Fedora ARM Installer" \
+  --menu "Choose your SDCard/eMMC/USB - Be sure the correct drive is selected!
+  WARNING! This WILL destroy the data on it!" 20 50 10 \
+  "${W[@]}" 3>&2 2>&1 1>&3)
+fi
 
 # add /dev/ to the selected option above
-	DEV_NAME=$SDCARD
-	SDCARD=/dev/$SDCARD
-	SDTYP=${SDCARD:5:2}
-else 
-	clear
-	exit 1
-fi
+DEV_NAME=$SDCARD
+SDCARD=/dev/$SDCARD
+SDTYPE=${SDCARD:5:2}
 
-if [[ "$SDTYP" = "sd" ]]; then
+if [[ "$SDTYPE" = "sd" ]]; then
 	SDDEV=""
-elif [[ "$SDTYP" = "mm" ]]; then
+elif [[ "$SDTYPE" = "mm" ]]; then
 	SDDEV="p"
 else 
-	clear
 	exit 1
 fi
 
-
-if [ -n "$SDCARD" ]; then
+if [ ! -n "$TIMEZONE" ]; then
 	i=0
 	W=()
 	while read -r line; do
@@ -470,13 +464,9 @@ if [ -n "$SDCARD" ]; then
 	--menu "Choose your timezone!" 20 50 15 \
 	"${W[@]}" 3>&1 1>&2 2>&3 3>&- \
 	)
-else 
-	clear
-	exit 1
 fi
 
-
-if [ -n "$TIMEZONE" ]; then
+if [ ! -n "$LOCALE" ]; then
 	i=0
 	W=()
 	while read -r line; do
@@ -487,12 +477,9 @@ if [ -n "$TIMEZONE" ]; then
 		--menu "Choose your locale!" 20 50 15 \
 		"${W[@]}" 3>&1 1>&2 2>&3 3>&- \
 		)
-else 
-	clear
-	exit 1
 fi
 
-if [ -n "$LOCALE" ]; then
+if [ ! -n "$CLIKEYMAP" ]; then
 	i=0
 	W=()
 	while read -r line; do
@@ -503,12 +490,9 @@ if [ -n "$LOCALE" ]; then
 		--menu "Choose your TTY keyboard layout:" 20 50 15 \
 		"${W[@]}" 3>&1 1>&2 2>&3 3>&- \
 	)
-else 
-	clear
-	exit 1
 fi
 
-if [ -n "$CLIKEYMAP" ]; then
+if [ ! -n "$X11KEYMAP" ]; then
 	i=0
 	W=()
 	while read -r line; do
@@ -519,40 +503,29 @@ if [ -n "$CLIKEYMAP" ]; then
 		--menu "Choose your X11 keyboard layout:" 20 50 15 \
 		"${W[@]}" 3>&1 1>&2 2>&3 3>&- \
 	)
-else 
-	clear
-	exit 1
 fi
 
-if [ -n "$CLIKEYMAP" ]; then
+if [ ! -n "$HOSTNAME" ]; then
 	HOSTNAME=$(dialog --clear --title "Fedora ARM Installer" \
 	--inputbox "Enter desired hostname (fqdn) for this system:" 8 50 \
 	3>&1 1>&2 2>&3 3>&- \
 	)
-else 
-	clear
-	exit 1
 fi
 
-if [ -n "$HOSTNAME" ]; then
-	dialog --clear --title "Fedora ARM Installer" \
-    --yesno "Is the below information correct:
-    Device = $DEVICE
-    Edition = $EDITION
-    Username = $USER
-    Additional usergroups = $USERGROUPS
-    Password for $USER = (password hidden)
-    Password for root = (password hidden)
-    SDCard/eMMC/USB = $SDCARD
-    Timezone = $TIMEZONE
-    Locale = $LOCALE
-    Keyboard layout = $CLIKEYMAP
-    Hostname = $HOSTNAME" 20 70 \
-    3>&1 1>&2 2>&3 3>&-
-else
-	clear
-	exit 1
-fi
+dialog --clear --title "Fedora ARM Installer" \
+  --yesno "Is the below information correct:
+  Device = $DEVICE
+  Edition = $EDITION
+  Username = $USER
+  Additional usergroups = $USERGROUPS
+  Password for $USER = (password hidden)
+  Password for root = (password hidden)
+  SDCard/eMMC/USB = $SDCARD
+  Timezone = $TIMEZONE
+  Locale = $LOCALE
+  Keyboard layout = $CLIKEYMAP
+  Hostname = $HOSTNAME" 20 70 \
+  3>&1 1>&2 2>&3 3>&-
 
 response=$?
 case $response in
